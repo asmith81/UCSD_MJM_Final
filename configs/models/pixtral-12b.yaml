@@ -1,0 +1,46 @@
+# Pixtral-12B Model Configuration
+
+# Basic model information
+name: "pixtral-12b"
+repo_id: "mistral-community/pixtral-12b"
+description: "Pixtral 12B vision-language model for invoice processing"
+model_type: "LlavaForConditionalGeneration"
+processor_type: "AutoProcessor"
+
+# Hardware requirements
+hardware:
+  gpu_required: true
+  gpu_memory_min: "24GB"
+  recommended_gpu: "A4000 or better"
+
+# Loading configuration
+loading:
+  default_strategy: "optimized"
+  torch_dtype: "bfloat16"  # This worked in your RunPod experiment
+  device_map: "cuda:0"     # This worked in your RunPod experiment
+  use_auth_token: false    # Whether the model requires Hugging Face authentication
+
+# Quantization options
+quantization:
+  default: "bfloat16"      # Default to your successful configuration
+  options:
+    bfloat16:              # Your current working configuration
+      torch_dtype: "bfloat16"
+      device_map: "cuda:0"
+    int8:                  # Future option for 8-bit quantization
+      load_in_8bit: true
+      device_map: "auto"
+    int4:                  # Future option for 4-bit quantization
+      load_in_4bit: true
+      bnb_4bit_compute_dtype: "bfloat16"
+      device_map: "auto"
+
+# Inference parameters
+inference:
+  max_new_tokens: 50       # Value from your successful notebook
+  do_sample: false         # Value from your successful notebook
+  batch_size: 1            # Start with single image processing
+  temperature: 1.0         # Default temperature for deterministic outputs
+
+# Prompt configuration
+prompt_format: "<s>[INST]Extract the work order number from this invoice image.\n[IMG][/INST]"  # Your successful prompt format

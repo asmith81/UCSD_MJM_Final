@@ -1,0 +1,14 @@
+# Project dependencies
+torch>=2.0.0
+transformers>=4.34.0
+accelerate>=0.21.0
+sentencepiece>=0.1.99
+tqdm>=4.66.1
+pillow>=10.0.0
+matplotlib>=3.7.2
+pandas>=2.0.3
+python-Levenshtein>=0.21.1
+bitsandbytes>=0.41.1
+numpy>=1.24.3
+jupyter>=1.0.0
+pyyaml>=6.0
