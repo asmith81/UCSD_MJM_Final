@@ -58,35 +58,35 @@ This ensures models like Pixtral-12B are stored persistently between sessions, e
 
 Run this notebook before starting any experiments to ensure your environment is correctly configured. This notebook should be run again whenever you change your working environment (e.g., moving from local to RunPod).
 
-# Model Loading Framework
+## Model Loading Framework
 
-## Overview
+### Overview
 The model loading framework provides a structured approach to loading and configuring large vision-language models like Pixtral-12B. It separates model configuration from loading logic, making it easy to experiment with different models and optimization strategies.
 
-## Components
+### Components
 
-### Model Configuration System
+#### Model Configuration System
 - **YAML Configuration Files**: Located in `configs/models/` directory
 - **Structured Configuration Classes**: Defined in `src/models/model_configs.py`
 - **Validation Logic**: Ensures configuration accuracy before model loading
 
-### Model Registry
+#### Model Registry
 The registry (`src/models/registry.py`) serves as a catalog of available models and provides:
 - Model discovery and listing capabilities
 - Configuration loading and caching
 - Environment-specific overrides
 - Access to loading parameters with different quantization options
 
-### Model Loader
+#### Model Loader
 The loader (`src/models/loader.py`) handles the actual model instantiation:
 - Loads models with appropriate configuration for different environments
 - Applies memory optimization techniques (precision, quantization)
 - Monitors and reports GPU memory usage
 - Validates model loading and handles errors
 
-## Usage
+### Usage
 
-### Basic Model Loading
+#### Basic Model Loading
 ```python
 from src.models.loader import load_model_and_processor
 
@@ -97,7 +97,7 @@ model, processor = load_model_and_processor("pixtral-12b")
 model, processor = load_model_and_processor("pixtral-12b", quantization="int8")
 ```
 
-### GPU Compatibility Checking
+#### GPU Compatibility Checking
 ```python
 from src.models.loader import verify_gpu_compatibility
 
@@ -109,7 +109,7 @@ else:
     print(f"GPU is not compatible: {compatibility['reason']}")
 ```
 
-### Memory Management
+#### Memory Management
 ```python
 from src.models.loader import get_gpu_memory_info, optimize_memory
 
@@ -121,7 +121,7 @@ print(f"GPU memory usage: {memory_info['allocated_memory_gb']:.2f} GB")
 optimize_memory(clear_cache=True)
 ```
 
-## Model Configuration Format
+### Model Configuration Format
 
 Model configuration files in `configs/models/` follow this structure:
 
@@ -167,7 +167,7 @@ inference:
   temperature: 1.0
 ```
 
-## Adding New Models
+### Adding New Models
 
 To add a new model to the framework:
 
@@ -175,7 +175,7 @@ To add a new model to the framework:
 2. Define the model's configuration following the format above
 3. The model will automatically be available through the registry
 
-## Quantization Strategies
+### Quantization Strategies
 
 The framework supports multiple quantization strategies:
 
@@ -185,53 +185,57 @@ The framework supports multiple quantization strategies:
 
 Different strategies can be selected at runtime without changing configuration files.
 
-Here's a section on the Prompt Management System to add to your README:
-Prompt Management System
-Overview
+## Prompt Management System
+
+### Overview
 The Prompt Management System provides a structured framework for organizing, accessing, and experimenting with different prompts for invoice information extraction. It enables systematic testing of various prompt formulations to identify the most effective approaches for each field type.
-Components
-Prompt Registry
-The registry (src/prompts/registry.py) serves as the central storage for all prompts:
 
-Stores prompts with metadata including category, field, and version
-Provides retrieval by name, category, or field type
-Handles loading from and saving to configuration files
-Supports iteration through filtered prompt subsets
+### Components
 
-Invoice-Specific Prompts
-Domain-specific prompts (src/prompts/invoice_prompts.py) implement various strategies for invoice data extraction:
+#### Prompt Registry
+The registry (`src/prompts/registry.py`) serves as the central storage for all prompts:
 
-Organizes prompts by extraction field (work order, cost, date)
-Provides different prompt categories (basic, detailed, positioned)
-Includes utility functions for accessing recommended prompts
-Automatically initializes the registry with default prompts
+- Stores prompts with metadata including category, field, and version
+- Provides retrieval by name, category, or field type
+- Handles loading from and saving to configuration files
+- Supports iteration through filtered prompt subsets
 
-Prompt Utilities
-Utility functions (src/prompts/prompt_utils.py) for working with prompts:
+#### Invoice-Specific Prompts
+Domain-specific prompts (`src/prompts/invoice_prompts.py`) implement various strategies for invoice data extraction:
 
-Model-specific formatting for different vision-language models
-Templating and variable substitution for prompt creation
-Analysis tools to calculate prompt complexity metrics
-Batch processing capabilities for efficient experimentation
+- Organizes prompts by extraction field (work order, cost, date)
+- Provides different prompt categories (basic, detailed, positioned)
+- Includes utility functions for accessing recommended prompts
+- Automatically initializes the registry with default prompts
 
-Configuration Files
-YAML configuration files in configs/prompts/ store structured prompt definitions:
+#### Prompt Utilities
+Utility functions (`src/prompts/prompt_utils.py`) for working with prompts:
 
-basic.yaml: Simple, direct prompts with minimal instructions
-detailed.yaml: Elaborate prompts with field descriptions and context
-positioned.yaml: Prompts with spatial information about field locations
+- Model-specific formatting for different vision-language models
+- Templating and variable substitution for prompt creation
+- Analysis tools to calculate prompt complexity metrics
+- Batch processing capabilities for efficient experimentation
 
-Integration with Experiments
+#### Configuration Files
+YAML configuration files in `configs/prompts/` store structured prompt definitions:
+
+- `basic.yaml`: Simple, direct prompts with minimal instructions
+- `detailed.yaml`: Elaborate prompts with field descriptions and context
+- `positioned.yaml`: Prompts with spatial information about field locations
+
+### Integration with Experiments
 The Prompt Management System integrates with the experiment configuration system:
 
-ExperimentConfig.get_prompts_for_experiment(): Retrieves prompts based on experiment parameters
-ExperimentConfig.validate_prompt_config(): Validates prompt-related configuration
-ExperimentConfig.format_prompt_for_model(): Prepares prompts for specific models
-ExperimentConfig.create_prompt_experiment(): Creates configurations for prompt comparison
+- `ExperimentConfig.get_prompts_for_experiment()`: Retrieves prompts based on experiment parameters
+- `ExperimentConfig.validate_prompt_config()`: Validates prompt-related configuration
+- `ExperimentConfig.format_prompt_for_model()`: Prepares prompts for specific models
+- `ExperimentConfig.create_prompt_experiment()`: Creates configurations for prompt comparison
 
-Usage
-Basic Prompt Access
-pythonCopyfrom src.prompts import get_prompt, format_prompt
+### Usage
+
+#### Basic Prompt Access
+```python
+from src.prompts import get_prompt, format_prompt
 
 # Get a specific prompt by name
 prompt = get_prompt("basic_work_order")
@@ -239,8 +243,11 @@ prompt = get_prompt("basic_work_order")
 # Format it for a specific model
 formatted_text = format_prompt(prompt, "pixtral-12b")
 # Result: "<s>[INST]Extract the work order number from this invoice image.\n[IMG][/INST]"
-Getting Prompts for Experiments
-pythonCopyfrom src.config.experiment import get_experiment_config
+```
+
+#### Getting Prompts for Experiments
+```python
+from src.config.experiment import get_experiment_config
 
 # Get experiment configuration
 config = get_experiment_config("prompt_comparison")
@@ -252,8 +259,11 @@ experiment_prompts = config.get_prompts_for_experiment()
 for prompt_info in experiment_prompts:
     formatted = config.format_prompt_for_model(prompt_info["name"])
     # Use formatted prompt for inference...
-Creating Prompt Variations
-pythonCopyfrom src.prompts import create_prompt_variants
+```
+
+#### Creating Prompt Variations
+```python
+from src.prompts import create_prompt_variants
 
 # Create systematic variations of a prompt
 base_prompt = "Extract the {field} from the {location} of this invoice."
@@ -264,11 +274,17 @@ variations = {
 
 variants = create_prompt_variants(base_prompt, variations)
 # Generates 9 different prompt combinations
-Adding New Prompts
+```
+
+### Adding New Prompts
+
 New prompts can be added in three ways:
+
 1. Via Configuration Files
-Add entries to YAML files in configs/prompts/ following this format:
-yamlCopyprompts:
+
+Add entries to YAML files in `configs/prompts/` following this format:
+```yaml
+prompts:
   - name: "new_prompt_name"
     text: "Your prompt text here."
     category: "your_category"
@@ -277,18 +293,26 @@ yamlCopyprompts:
     version: "1.0"
     metadata:
       source: "your_identifier"
+```
+
 2. Via Source Code
-Add prompts programmatically in src/prompts/invoice_prompts.py:
-pythonCopyregister_prompt(Prompt(
+
+Add prompts programmatically in `src/prompts/invoice_prompts.py`:
+```python
+register_prompt(Prompt(
     name="new_work_order_prompt",
     text="Your prompt text here.",
     category="your_category",
-    field_to_extract="work_order",
+    field_to_extract: "work_order",
     description="Description of what this prompt tests."
 ))
+```
+
 3. From Notebooks
+
 Create and register prompts directly from experiment notebooks:
-pythonCopyfrom src.prompts import Prompt, register_prompt
+```python
+from src.prompts import Prompt, register_prompt
 
 register_prompt(Prompt(
     name="experiment_prompt",
@@ -297,28 +321,28 @@ register_prompt(Prompt(
     field_to_extract="work_order",
     description="Created during experimentation."
 ))
-Prompt Categories
+```
+
+### Prompt Categories
 The system organizes prompts into several categories:
 
-basic: Simple, direct instructions with minimal context
-detailed: Elaborate prompts with field descriptions and multiple label options
-positioned: Prompts that direct attention to specific areas of the invoice
-formatted: Prompts that specify output format requirements
-contextual: Prompts that provide business context around the document
-chain_of_thought: Prompts that guide the model through step-by-step reasoning
+- **basic**: Simple, direct instructions with minimal context
+- **detailed**: Elaborate prompts with field descriptions and multiple label options
+- **positioned**: Prompts that direct attention to specific areas of the invoice
+- **formatted**: Prompts that specify output format requirements
+- **contextual**: Prompts that provide business context around the document
+- **chain_of_thought**: Prompts that guide the model through step-by-step reasoning
 
 This categorization enables systematic testing to determine which prompt strategies work best for different extraction tasks.
 
-Here's a section on the Pipeline system to add to your README:
+## Extraction Pipeline Framework
 
-# Extraction Pipeline Framework
-
-## Overview
+### Overview
 The Extraction Pipeline Framework provides a comprehensive system for orchestrating the entire extraction workflow, from loading models and prompts to processing images, analyzing results, and generating visualizations. This pipeline architecture enables systematic experimentation with different models, prompts, and extraction strategies.
 
-## Components
+### Components
 
-### Pipeline Orchestration
+#### Pipeline Orchestration
 The central orchestration class (`src/execution/pipeline.py`) coordinates the entire workflow:
 - Manages experiment configuration and initialization
 - Handles model and processor loading
@@ -326,27 +350,27 @@ The central orchestration class (`src/execution/pipeline.py`) coordinates the en
 - Collects and analyzes results
 - Organizes outputs into appropriate directories
 
-### Inference Engine
+#### Inference Engine
 The inference engine (`src/execution/inference.py`) provides core image processing capabilities:
 - Processes individual images using vision-language models
 - Extracts field information based on prompts
 - Calculates accuracy metrics against ground truth
 - Monitors performance and resource usage
 
-### Batch Processing
+#### Batch Processing
 The batch processing system (`src/execution/batch.py`) efficiently handles multiple images:
 - Creates optimal batch sizes based on GPU memory constraints
 - Implements checkpointing for resumable processing
 - Provides progress tracking and error handling
 - Optimizes memory usage between batches
 
-### Result Organization
+#### Result Organization
 Results are automatically organized into a structured directory hierarchy:
 - **Raw Results**: Detailed extraction outputs for each image, stored in `experiment_dir/raw/`
 - **Processed Results**: Summary metrics and analysis, stored in `experiment_dir/processed/`
 - **Visualizations**: Charts, graphs, and dashboards, stored in `experiment_dir/visualizations/`
 
-## Pipeline Configuration
+### Pipeline Configuration
 
 The pipeline's behavior is controlled through configuration files in `configs/pipeline/`:
 
@@ -385,9 +409,9 @@ output:
   metrics: ["exact_match", "character_error_rate"]
 ```
 
-## Usage
+### Usage
 
-### Basic Extraction
+#### Basic Extraction
 ```python
 from src.execution.pipeline import run_extraction_pipeline
 
@@ -404,7 +428,7 @@ results = pipeline.results
 summary = pipeline.analyze_results()
 ```
 
-### Customized Pipeline
+#### Customized Pipeline
 ```python
 from src.execution.pipeline import ExtractionPipeline
 
@@ -461,7 +485,7 @@ model_comparison = pipeline.run_model_comparison(
 )
 ```
 
-## Experiment Workflow
+### Experiment Workflow
 
 The pipeline supports three primary experiment types:
 
@@ -476,7 +500,7 @@ Each experiment follows the same general workflow:
 4. **Visualization**: Create visual representations of performance
 5. **Cleanup**: Release resources and prepare for subsequent experiments
 
-## Result Analysis and Visualization
+### Result Analysis and Visualization
 
 The pipeline automatically generates analysis and visualizations:
 
