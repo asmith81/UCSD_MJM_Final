@@ -85,6 +85,10 @@ class ExtractionPipeline:
         self.processor = None
         self.results = []
         self.ground_truth_mapping = {}
+        self.prompts = []
+        self.results_by_prompt = {}
+        self.current_prompt_index = 0
+        self.current_batch = 0
         
         logger.info(f"Extraction pipeline initialized for experiment: {self.experiment_name}")
         logger.info(f"Results will be stored in: {self.paths.experiment_dir}")
@@ -122,7 +126,8 @@ class ExtractionPipeline:
         self,
         ground_truth_path: Optional[Union[str, Path]] = None,
         image_id_column: str = "Invoice",
-        field_column: Optional[str] = None
+        field_column: Optional[str] = None,
+        ground_truth_mapping: Optional[Dict[str, Any]] = None
     ) -> Dict[str, str]:
         """
         Load ground truth data for evaluation.
@@ -132,10 +137,17 @@ class ExtractionPipeline:
             image_id_column: Column name containing image IDs
             field_column: Column name for the field to extract
                           (uses field_to_extract from config if None)
+            ground_truth_mapping: Direct mapping to use instead of loading from CSV
         
         Returns:
             Dictionary mapping image IDs to ground truth values
         """
+        # If ground truth mapping provided directly, use that
+        if ground_truth_mapping is not None:
+            logger.info(f"Using provided ground truth mapping with {len(ground_truth_mapping)} entries")
+            self.ground_truth_mapping = ground_truth_mapping
+            return ground_truth_mapping
+        
         # Use provided path or default from paths
         if ground_truth_path is None:
             ground_truth_path = self.paths.ground_truth_path
@@ -171,6 +183,88 @@ class ExtractionPipeline:
         logger.info(f"Created ground truth mapping for {len(mapping)} images")
         self.ground_truth_mapping = mapping
         return mapping
+    
+    def set_prompts(self, prompts):
+        """
+        Set the collection of prompts to use for comparison experiments.
+        
+        Args:
+            prompts: List of prompt objects or dictionaries with prompt information
+            
+        Returns:
+            Self for method chaining
+        """
+        # Store prompts as an instance variable
+        self.prompts = prompts
+        
+        # Initialize results dictionary if needed
+        if not hasattr(self, 'results_by_prompt'):
+            self.results_by_prompt = {}
+        
+        # Set up results storage for each prompt
+        for prompt in prompts:
+            # Get prompt identifier (name or ID)
+            if isinstance(prompt, dict):
+                prompt_key = prompt.get("name", str(id(prompt)))
+            else:
+                prompt_key = getattr(prompt, "name", str(id(prompt)))
+            
+            # Initialize empty results list if not already present
+            if prompt_key not in self.results_by_prompt:
+                self.results_by_prompt[prompt_key] = []
+        
+        logger.info(f"Set {len(prompts)} prompts for comparison")
+        return self
+    
+    def get_current_prompt(self):
+        """Get the current prompt being processed"""
+        if 0 <= self.current_prompt_index < len(self.prompts):
+            return self.prompts[self.current_prompt_index]
+        return None
+    
+    def next_prompt(self):
+        """Move to the next prompt for processing"""
+        if self.current_prompt_index < len(self.prompts) - 1:
+            self.current_prompt_index += 1
+            return self.get_current_prompt()
+        return None
+    
+    def reset_prompt_index(self):
+        """Reset to the first prompt"""
+        self.current_prompt_index = 0
+        return self.get_current_prompt()
+    
+    def determine_optimal_batch_size(self, start_size=1, max_size=8):
+        """Determine the optimal batch size for the GPU"""
+        if not torch.cuda.is_available():
+            logger.info("No GPU available, using batch size 1")
+            return 1
+            
+        # Get a sample image to test
+        sample_items = self.prepare_extraction_task(limit=1)
+        if not sample_items:
+            logger.warning("No images available to test batch size, using default")
+            return self.config.get("batch_processing", {}).get("batch_size", 1)
+            
+        sample_image = sample_items[0]["image_path"]
+        prompt = self.get_current_prompt() or self.get_experiment_prompt()
+        
+        try:
+            # Use the optimization function from batch processing
+            optimal_size = estimate_optimal_batch_size(
+                model_name=self.config.get("model_name", "pixtral-12b"),
+                image_path=sample_image,
+                prompt=prompt,
+                start_size=start_size,
+                max_size=max_size
+            )
+            logger.info(f"Determined optimal batch size: {optimal_size}")
+            return optimal_size
+        except Exception as e:
+            logger.warning(f"Error determining batch size: {e}")
+            default_size = self.config.get("batch_processing", {}).get("batch_size", 1)
+            logger.info(f"Using default batch size: {default_size}")
+            return default_size
     
     def setup_model(
         self,

@@ -1,0 +1,6 @@
+apt update
+apt-get install -y unzip
+
+# zip without 
+cd /path/to/parent/directory
+zip -r workspace.zip workspace -x "workspace/models/*" -x "workspace/*.zip"

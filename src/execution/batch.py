@@ -452,7 +452,7 @@ def process_batches(
     recent_errors = []
     
     # Try to resume from checkpoint if requested
-    if checkpoint_path and resume_from_checkpoint and Path(checkpoint_path).exists()::
+    if checkpoint_path and resume_from_checkpoint and Path(checkpoint_path).exists():
         try:
             logger.info(f"Attempting to resume from checkpoint: {checkpoint_path}")
             checkpoint_data = load_checkpoint(checkpoint_path)

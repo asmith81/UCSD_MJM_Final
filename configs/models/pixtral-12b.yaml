@@ -1,5 +1,4 @@
 # Pixtral-12B Model Configuration
-
 # Basic model information
 name: "pixtral-12b"
 repo_id: "mistral-community/pixtral-12b"
@@ -19,6 +18,8 @@ loading:
   torch_dtype: "bfloat16"  # This worked in your RunPod experiment
   device_map: "cuda:0"     # This worked in your RunPod experiment
   use_auth_token: false    # Whether the model requires Hugging Face authentication
+  use_flash_attention_2: false  # Explicitly disable flash attention
+  attn_implementation: "eager"  # Use eager implementation instead
 
 # Quantization options
 quantization:
@@ -27,13 +28,19 @@ quantization:
     bfloat16:              # Your current working configuration
       torch_dtype: "bfloat16"
       device_map: "cuda:0"
+      use_flash_attention_2: false  # Also disable in quantization options
+      attn_implementation: "eager"  # Use eager implementation in quantization options
     int8:                  # Future option for 8-bit quantization
       load_in_8bit: true
       device_map: "auto"
+      use_flash_attention_2: false
+      attn_implementation: "eager"
     int4:                  # Future option for 4-bit quantization
       load_in_4bit: true
       bnb_4bit_compute_dtype: "bfloat16"
       device_map: "auto"
+      use_flash_attention_2: false
+      attn_implementation: "eager"
 
 # Inference parameters
 inference:

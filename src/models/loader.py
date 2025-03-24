@@ -1,6 +1,3 @@
-Let me design the `src/models/loader.py` file that will handle the actual loading of models based on the configuration from the registry:
-
-```python
 """
 Model loading utilities for vision-language models.
 
@@ -58,12 +55,21 @@ def load_model_and_processor(
     # Get loading parameters
     loading_params = get_loading_params(model_name, quantization=quantization)
     
-    # Override with any provided kwargs
-    loading_params.update(kwargs)
+    # Filter out model and processor keys from kwargs and loading_params
+    filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['model', 'processor']}
+    loading_params = {k: v for k, v in loading_params.items() if k not in ['model', 'processor']}
+    
+    # Override with filtered kwargs
+    loading_params.update(filtered_kwargs)
     
     # Override cache directory if provided
     if cache_dir is not None:
         loading_params["cache_dir"] = cache_dir
+    
+    # Ensure we're using the settings that worked in RunPod
+    if torch.cuda.is_available():
+        loading_params.setdefault("torch_dtype", torch.bfloat16)
+        loading_params.setdefault("device_map", "cuda:0")
     
     # Log model loading attempt
     logger.info(f"Loading model {model_name} from {model_config['repo_id']}")
@@ -73,6 +79,8 @@ def load_model_and_processor(
     if torch.cuda.is_available():
         initial_memory = torch.cuda.memory_allocated() / 1e9
         logger.info(f"Initial GPU memory usage: {initial_memory:.2f} GB")
+        logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
+        logger.info(f"CUDA version: {torch.version.cuda}")
     else:
         logger.warning("No GPU detected, model will be loaded on CPU")
     
@@ -95,14 +103,27 @@ def load_model_and_processor(
     try:
         # Load the model
         repo_id = model_config["repo_id"]
+        
+        # Try to import flash_attn to check if it's available
+        try:
+            import flash_attn
+            logger.info(f"Flash Attention available (version {flash_attn.__version__})")
+            # Still set this to False since we'll use attn_implementation parameter instead
+            loading_params.setdefault("use_flash_attention_2", False)
+            loading_params.setdefault("attn_implementation", "flash_attention_2")
+        except ImportError:
+            logger.info("Flash Attention not available, using eager implementation")
+            loading_params.setdefault("use_flash_attention_2", False)
+            loading_params.setdefault("attn_implementation", "eager")
+        
         model = model_class.from_pretrained(repo_id, **loading_params)
         
         # Load the processor
         processor_type = model_config.get("processor_type", "AutoProcessor")
         if processor_type == "AutoProcessor":
-            processor = AutoProcessor.from_pretrained(repo_id, **loading_params)
+            processor = AutoProcessor.from_pretrained(repo_id)
         elif processor_type == "AutoTokenizer":
-            processor = AutoTokenizer.from_pretrained(repo_id, **loading_params)
+            processor = AutoTokenizer.from_pretrained(repo_id)
         else:
             logger.error(f"Unsupported processor type: {processor_type}")
             raise ValueError(f"Unsupported processor type: {processor_type}")
@@ -115,6 +136,13 @@ def load_model_and_processor(
             logger.info(f"Model loaded successfully using {memory_used:.2f} GB of GPU memory")
             logger.info(f"Total GPU memory usage: {current_memory:.2f} GB")
         
+        # Verify model is on correct device
+        if torch.cuda.is_available():
+            if hasattr(model, "device"):
+                logger.info(f"Model device: {model.device}")
+            else:
+                logger.info("Model device information not available")
+        
         # Report loading time
         loading_time = time.time() - start_time
         logger.info(f"Model loading completed in {loading_time:.2f} seconds")
@@ -123,6 +151,8 @@ def load_model_and_processor(
         
     except Exception as e:
         logger.error(f"Error loading model {model_name}: {str(e)}")
+        # Try to clean up memory before raising exception
+        optimize_memory(clear_cache=True)
         raise RuntimeError(f"Failed to load model {model_name}: {str(e)}")
 
 
@@ -236,6 +266,68 @@ def verify_gpu_compatibility(model_name: str) -> Dict[str, Any]:
     }
 
 
+def extract_field_from_image(image_path, prompt, model=None, processor=None):
+    """
+    Extract field from an invoice image using the model.
+    Replicates the successful approach from the RunPod notebook.
+    
+    Args:
+        image_path: Path to the invoice image
+        prompt: Prompt to use for extraction
+        model: Loaded model instance
+        processor: Loaded processor instance
+        
+    Returns:
+        Tuple of (extracted_text, processing_time)
+    """
+    import torch
+    from PIL import Image
+    import time
+    
+    # Validate inputs
+    if model is None or processor is None:
+        raise ValueError("Model and processor must be provided")
+    
+    start_time = time.time()
+    
+    try:
+        # Open the image
+        image = Image.open(image_path).convert("RGB")
+        
+        # Process using successful approach from RunPod notebook
+        inputs = processor(
+            text=prompt,
+            images=[image],
+            return_tensors="pt"
+        )
+        
+        # Convert inputs to appropriate dtypes
+        for key in inputs:
+            if key == "pixel_values":
+                inputs[key] = inputs[key].to(dtype=torch.bfloat16, device=model.device)
+            else:
+                inputs[key] = inputs[key].to(device=model.device)
+        
+        # Generate response
+        with torch.no_grad():
+            outputs = model.generate(**inputs, max_new_tokens=50, do_sample=False)
+        
+        # Decode the output
+        extracted_text = processor.batch_decode(
+            outputs, 
+            skip_special_tokens=True, 
+            clean_up_tokenization_spaces=False
+        )[0]
+        
+        processing_time = time.time() - start_time
+        
+        return extracted_text, processing_time
+    
+    except Exception as e:
+        logger.error(f"Error processing image {image_path}: {e}")
+        return f"ERROR: {str(e)}", time.time() - start_time
+
+
 if __name__ == "__main__":
     # Setup basic logging
     logging.basicConfig(level=logging.INFO)
@@ -256,4 +348,3 @@ if __name__ == "__main__":
         print(f"  {model_name}: {status}")
         if not compatibility["compatible"]:
             print(f"    Reason: {compatibility['reason']}")
-

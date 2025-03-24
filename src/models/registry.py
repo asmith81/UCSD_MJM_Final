@@ -212,6 +212,14 @@ class ModelRegistry:
         # Add cache directory
         loading_params["cache_dir"] = self.paths.model_cache_dir
         
+        # Filter out parameters that aren't meant for the model constructor
+        # These are parameters used by our application but not by the model itself
+        params_to_remove = ['default_strategy']
+        for param in params_to_remove:
+            if param in loading_params:
+                loading_params.pop(param)
+                logger.info(f"Removed '{param}' from loading parameters (not for model constructor)")
+        
         return loading_params
     
     def get_inference_params(self, model_name: str) -> Dict[str, Any]:

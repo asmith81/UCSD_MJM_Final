@@ -12,7 +12,7 @@ import os
 import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Iterator, Any
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields
 
 @dataclass
 class Prompt:

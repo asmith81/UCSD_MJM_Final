@@ -16,6 +16,7 @@ import yaml
 import logging
 import platform
 import torch
+import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional, Union
 
@@ -89,18 +90,60 @@ class EnvironmentConfig:
         Returns:
             String identifier for the environment ("local" or "runpod")
         """
-        # Check if we're in a RunPod environment
-        if os.environ.get("RUNPOD_POD_ID") is not None:
+        # Method 1: Check for RunPod environment variables
+        runpod_env_vars = ["RUNPOD_POD_ID", "RUNPOD_GPU_COUNT", "RUNPOD_API_KEY"]
+        if any(os.environ.get(var) is not None for var in runpod_env_vars):
+            logger.info("RunPod environment detected via environment variables")
+            return "runpod"
+        
+        # Method 2: Check if we're in a Docker container (common on RunPod)
+        try:
+            with open('/proc/1/cgroup', 'r') as f:
+                if 'docker' in f.read():
+                    logger.info("Docker container detected, likely RunPod")
+                    return "runpod"
+        except (IOError, FileNotFoundError):
+            pass  # Not in a Linux environment or not in a container
+            
+        # Method 3: Check for CUDA availability and GPU type
+        if torch.cuda.is_available():
+            try:
+                # Get GPU name
+                gpu_name = torch.cuda.get_device_name(0).lower()
+                logger.info(f"Detected GPU: {gpu_name}")
+                
+                # Common RunPod GPU types
+                runpod_gpus = ["a100", "a6000", "v100", "a40", "a10", "rtx", "tesla", "quadro"]
+                if any(gpu_type in gpu_name for gpu_type in runpod_gpus):
+                    logger.info(f"RunPod environment likely based on GPU type: {gpu_name}")
+                    return "runpod"
+                
+                # Check CUDA version - RunPod often uses recent CUDA versions
+                if hasattr(torch.version, 'cuda') and torch.version.cuda:
+                    cuda_version = float(torch.version.cuda.split('.')[0])
+                    if cuda_version >= 11.0:
+                        logger.info(f"Modern CUDA version detected ({torch.version.cuda}), possibly RunPod")
+                        # This alone isn't enough to determine RunPod, but it's a hint
+            except Exception as e:
+                logger.warning(f"Error checking GPU information: {e}")
+        
+        # Method 4: Check system memory profile (RunPod instances often have high RAM)
+        try:
+            import psutil
+            total_memory = psutil.virtual_memory().total / (1024 ** 3)  # GB
+            if total_memory > 30:  # RunPod instances often have >30GB RAM
+                logger.info(f"High memory system detected ({total_memory:.1f}GB), possibly RunPod")
+                # Again, this alone isn't definitive
+        except (ImportError, Exception):
+            pass
+        
+        # Check for any RunPod-specific paths
+        if os.path.exists('/cache') or os.path.exists('/workspace'):
+            logger.info("RunPod-specific directories detected")
             return "runpod"
             
-        # Check for CUDA availability as another hint
-        if torch.cuda.is_available():
-            gpu_name = torch.cuda.get_device_name(0).lower()
-            # Check for common RunPod GPU types
-            if any(name in gpu_name for name in ["a100", "a6000", "v100", "a40"]):
-                return "runpod"
-        
         # Default to local environment
+        logger.info("Local environment detected (no RunPod indicators found)")
         return "local"
     
     def _load_config(self) -> Dict[str, Any]:
@@ -155,6 +198,30 @@ class EnvironmentConfig:
         
         # Verify hardware requirements if specified
         self._verify_hardware_requirements()
+        
+        # Apply environment-specific settings
+        if self.environment == "runpod":
+            self._setup_runpod_environment()
+    
+    def _setup_runpod_environment(self) -> None:
+        """Apply RunPod-specific environment settings."""
+        # Set cache directory if it exists
+        if os.path.exists('/cache'):
+            os.environ['TRANSFORMERS_CACHE'] = '/cache/huggingface'
+            os.environ['TORCH_HOME'] = '/cache/torch'
+            logger.info("Set cache directories to RunPod persistent storage")
+        
+        # Configure PyTorch for optimal performance
+        if torch.cuda.is_available():
+            # Use deterministic algorithms for reproducibility if specified
+            if self.config.get("hardware", {}).get("deterministic", False):
+                torch.backends.cudnn.deterministic = True
+                torch.backends.cudnn.benchmark = False
+                logger.info("Set PyTorch to use deterministic algorithms")
+            else:
+                # Use benchmark mode for performance
+                torch.backends.cudnn.benchmark = True
+                logger.info("Enabled cuDNN benchmark mode for performance")
     
     def _verify_hardware_requirements(self) -> None:
         """Verify that the current hardware meets the requirements."""
@@ -166,6 +233,25 @@ class EnvironmentConfig:
         # Check GPU requirements
         if hardware.get("gpu_required", False) and not torch.cuda.is_available():
             logger.warning("GPU is required but not available")
+            
+        # Check CUDA version if specified
+        if torch.cuda.is_available() and "cuda_version" in hardware:
+            required_version = hardware["cuda_version"]
+            if hasattr(torch.version, 'cuda') and torch.version.cuda:
+                current_version = torch.version.cuda
+                logger.info(f"CUDA version: {current_version}")
+                
+                # Compare major versions (11.2 vs 11.4 should be compatible)
+                required_major = required_version.split('.')[0]
+                current_major = current_version.split('.')[0]
+                
+                if current_major != required_major:
+                    logger.warning(
+                        f"CUDA version mismatch: required {required_version}, "
+                        f"current {current_version}"
+                    )
+            else:
+                logger.warning("CUDA version information not available")
             
         # Check GPU memory if applicable
         if torch.cuda.is_available() and "gpu_memory_min" in hardware:
@@ -257,6 +343,20 @@ class EnvironmentConfig:
         print(f"Environment: {self.environment}")
         print(f"Project root: {self.project_root}")
         
+        # Print system information
+        print("\nSystem Information:")
+        print(f"  OS: {platform.system()} {platform.release()}")
+        print(f"  Python: {platform.python_version()}")
+        
+        if torch.cuda.is_available():
+            print("\nGPU Information:")
+            print(f"  Device: {torch.cuda.get_device_name(0)}")
+            print(f"  CUDA Version: {torch.version.cuda}")
+            memory_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+            print(f"  Memory: {memory_gb:.2f} GB")
+        else:
+            print("\nNo GPU detected")
+        
         if "hardware" in self.config:
             hw = self.config["hardware"]
             print("\nHardware Configuration:")
@@ -271,6 +371,11 @@ class EnvironmentConfig:
         print("\nPath Configuration:")
         for key, value in self.config.get("paths", {}).items():
             print(f"  {key}: {value}")
+        
+        if "dependencies" in self.config:
+            print("\nDependency Requirements:")
+            for package, version in self.config["dependencies"].items():
+                print(f"  {package}: {version}")
 
 
 # Singleton instance for global access
@@ -292,6 +397,28 @@ def get_environment_config(reload: bool = False) -> EnvironmentConfig:
         _env_config = EnvironmentConfig()
         
     return _env_config
+
+
+def setup_environment():
+    """
+    Set up the environment based on the detected configuration.
+    This is a convenience function to be called at the beginning of scripts.
+    """
+    # Get environment configuration
+    env_config = get_environment_config()
+    
+    # Apply PyTorch settings for RunPod
+    if env_config.environment == "runpod" and torch.cuda.is_available():
+        # Set default tensor type based on configured precision
+        precision = env_config.get("model_defaults.precision", "float32")
+        if precision == "bfloat16" and torch.cuda.is_available():
+            torch.set_default_tensor_type(torch.cuda.BFloat16Tensor)
+            logger.info("Set default tensor type to BFloat16")
+        elif precision == "float16" and torch.cuda.is_available():
+            torch.set_default_tensor_type(torch.cuda.HalfTensor)
+            logger.info("Set default tensor type to Float16")
+    
+    return env_config
 
 
 if __name__ == "__main__":

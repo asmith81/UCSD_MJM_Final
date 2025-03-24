@@ -8,7 +8,7 @@ environment:
 # Hardware Settings
 hardware:
   gpu_required: true
-  gpu_memory_min: "50GB"  
+  gpu_memory_min: "24GB"  # Adjusted to be more realistic for Pixtral-12B
   cuda_version: "11.8"
   
 # Path Configuration
@@ -34,10 +34,28 @@ execution:
   verbose_logging: true
   gpu_monitoring: true
   
-# Dependencies 
+# Dependencies - Matches exactly what worked in your successful notebook
 dependencies:
-  transformers: "==4.34.0"  # Exact versions that worked on RunPod
+  transformers: "==4.34.0"
   torch: "==2.0.1"
   accelerate: "==0.21.0"
-  bitsandbytes: ">=0.41.1"  # For quantization
-  sentencepiece: ">=0.1.99"
+  sentencepiece: "==0.1.99"
+  tqdm: "==4.66.1"
+  pillow: "==10.0.0"
+  matplotlib: "==3.7.2"
+  pandas: "==2.0.3"
+  python-Levenshtein: "==0.21.1"
+  bitsandbytes: "==0.41.1"
+  numpy: "==1.24.3"
+
+# Model-specific configurations
+models:
+  pixtral-12b:
+    repo_id: "mistral-community/pixtral-12b"
+    model_type: "LlavaForConditionalGeneration"
+    processor_type: "AutoProcessor"
+    loading_strategy: "standard"
+    description: "Pixtral 12B vision-language model for invoice processing"
+    hardware:
+      gpu_memory_min: "24GB"
+    prompt_format: "<s>[INST]Extract the work order number from this invoice image.\n[IMG][/INST]"

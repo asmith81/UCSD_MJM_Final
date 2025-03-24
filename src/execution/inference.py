@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 def extract_field_from_image(
     image_path: Union[str, Path],
-    prompt: Union[str, Prompt],
+    prompt: Union[str, Prompt, Dict[str, Any]],
     model_name: str,
     model: Any = None,
     processor: Any = None,
@@ -52,7 +52,7 @@ def extract_field_from_image(
     
     Args:
         image_path: Path to the invoice image
-        prompt: Prompt object or prompt text to use for extraction
+        prompt: Prompt object, dictionary, or prompt text to use for extraction
         model_name: Name of the model to use (for loading or formatting)
         model: Pre-loaded model (will be loaded if None)
         processor: Pre-loaded processor (will be loaded if None)
@@ -112,28 +112,63 @@ def extract_field_from_image(
     target_dtype = precision_map.get(precision, torch.bfloat16)
     metadata["actual_precision"] = precision
     
-    # Convert prompt to proper format if it's a Prompt object
+    # Process prompt based on its type
     if isinstance(prompt, Prompt):
+        # Handle Prompt class object
         formatted_prompt = prompt.format_for_model(model_name)
         metadata["prompt_name"] = prompt.name
         metadata["prompt_category"] = prompt.category
         metadata["prompt_field"] = prompt.field_to_extract
+    elif isinstance(prompt, dict):
+        # Handle dictionary prompt info
+        if "formatted_text" in prompt:
+            formatted_prompt = prompt["formatted_text"]
+        elif "text" in prompt:
+            formatted_prompt = prompt["text"]
+        else:
+            # Try to find any string value in the dictionary
+            for key, value in prompt.items():
+                if isinstance(value, str) and len(value) > 0:
+                    formatted_prompt = value
+                    logger.info(f"Using text from '{key}' field for prompt")
+                    break
+            else:
+                # Fallback to default if no string found
+                formatted_prompt = f"<s>[INST]Extract the {model_config.get('field_type', 'information')} from this invoice image.\n[IMG][/INST]"
+                logger.warning(f"No suitable text found in prompt dictionary, using default: {formatted_prompt}")
+        
+        # Store metadata from the prompt info dictionary
+        metadata["prompt_name"] = prompt.get("name", "unknown")
+        metadata["prompt_category"] = prompt.get("category", "unknown")
+        metadata["prompt_field"] = prompt.get("field_to_extract", "unknown")
     else:
         # Assume it's already a formatted string
-        formatted_prompt = prompt
+        formatted_prompt = str(prompt)
         metadata["prompt_name"] = "custom_string"
+    
+    logger.info(f"Using formatted prompt: '{formatted_prompt}'")
     
     try:
         # Open and convert the image
         image = Image.open(image_path).convert("RGB")
         metadata["image_size"] = image.size
         
-        # Process using processor - different models may need different processing
-        inputs = processor(
-            text=formatted_prompt,
-            images=[image],  # Passing as a list for batch compatibility
-            return_tensors="pt"
-        )
+        # Process using processor - FIXED: pass image directly, not as a list
+        try:
+            # First try with direct image (not in a list)
+            inputs = processor(
+                text=formatted_prompt,
+                images=image,  # Direct image, not wrapped in a list
+                return_tensors="pt"
+            )
+        except Exception as e1:
+            logger.warning(f"Error with direct image input: {e1}. Trying with list wrapping...")
+            # Fall back to list-wrapped image if direct approach fails
+            inputs = processor(
+                text=formatted_prompt,
+                images=[image],  # Wrapped in a list as fallback
+                return_tensors="pt"
+            )
         
         # Convert inputs to appropriate dtypes based on model architecture
         for key in inputs:
@@ -315,7 +350,7 @@ def calculate_metrics(
 def process_image_with_metrics(
     image_path: Union[str, Path],
     ground_truth: str,
-    prompt: Union[str, Prompt],
+    prompt: Union[str, Prompt, Dict[str, Any]],
     model_name: str,
     field_type: str,
     model: Any = None,
@@ -335,7 +370,7 @@ def process_image_with_metrics(
     Args:
         image_path: Path to the invoice image
         ground_truth: Ground truth value for the field
-        prompt: Prompt object or text to use
+        prompt: Prompt object, dictionary, or text to use
         model_name: Name of the model to use
         field_type: Type of field being extracted
         model: Pre-loaded model (will be loaded if None)
